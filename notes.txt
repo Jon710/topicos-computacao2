@@ -1,0 +1,76 @@
+Conexões minimas sugeridas
+
+VCC e GND
+Reset (pushbutton para GND e resistor grande ~ 10k para VCC) para reset
+
+O ATmega tem varias fontes possiveis para sinal de clock: oscilador interno RC calibravel (pouco preciso), clock externo, oscilador RC de 128 kHz, oscilador a cristal (mais preciso e com maior limite)
+
+Para usar o oscilador a cristal, que admite frequencias de até 20mHz, configuramos o modo FULL SWING CRYSTAL OSCILLATOR.
+
+Por padrão, um ATmega vem de fábrica com o oscilador interno RC selecionado. Esse oscilador opera a 8.0 MHz. Alem disso, por padrão o fusível CLKDIV8 é programado, indicando que o clock deve ser divido por 8. Consequentemente, um ATmega recém comprado opera a uma frequencia de 1.0 mHz.
+
+As configurações de clock, watchdog, possibilidade de programação via interface serial etc., são realizadas atraves da programação (gravação) de ´fuses´ (fusíveis, que são bits especificos localizados na memória flash, fora da região de armazenamento de programas).
+
+Fuse latching = it happens when the device enters programming mode and changes of the fuse values will have no effect until the part leaves Programming mode. This does not apply to the EESAVE Fusewhich will take effect once it is programmed. The fuses are also latched on Power-up in Normal mode.
+
+No ATmega, os fusiveis são organizados em 3 bytes: lfuse (low), hfuse (high) e efuse (extended). O significado de cada fusivel é explicado no datasheet, mas existem ferramentas de auxilio á programação, como o AVR Fuse Calculator.
+
+Exemplos:
+Lfuse = 0xC7 = 1 1 0 0  0 1 1 1
+
+CLKDIV8 não programado => sem divisão do clock por 8
+CLK0 não programado => sinal de clock não aparece em Port B.0
+SUT1, SUT0 programados => maximo start up time (para estabilização do oscilador)
+CLKSEL[3:0] => 0110 (full swing crystal oscillator)
+
+Obs: para fusiveis, programado significa 0, não programado significa 1.
+
+Hfuse = 0xD9 = 1 1 0 1  1 0 0 1
+
+RSTDISB não programado => reset não desabilitado
+DWEN não programado => interface de depuração DebugWire não ativada
+SPIEN não programado => programação via interface serial SPI ativado (sem isso, o microcontrolador não pode ser programado via interface serial, ou seja, ISP)
+WDTON não programado => sem watchdog timer
+
+Para gravação do ATmega, utilizados um utilitario chamado AVRDUDE (versão linha de comando). Esse programa tem varias opções, dentre as quais listamos as mais importantes abaixo:
+
+-p <microcontrolador>
+-c <programador>
+-P <porta serial>
+> avrdude -p m328p -c usbasp -P usb => verifica chip e lê fuses
+
+Gravação de fusiveis
+> avrdude -p m328p -c usbasp -P usb -U lfuse:w:0x<valor do low fuse>:m -U hfuse…
+
+Embora pareça muito simples a primeira vista, a tarefa de controlar um LCD diretamente é bem complicada. Para simplificar, os LCDs vêm com um controlador/driver embutido. O mais comum é HD44780 da Hitachi. Para usar o LCD, uma CPU deve comunicar-se com o HD44780, que cuida do controle direto do LCD.
+
+Tipicamente, os pinos são:
+Alimentação, VCC (ou VDD), normalmente 5V, GND ou VSS, terra
+RS (register select): 1 para dados, 0 para comando (instrução)
+R/W: 0 para escrita, 1 para leitura
+EN (enable): inicia um ciclo de leitura/escrita
+D0 a D7: dados (para o caso de interfaceamento com 8 bits); para interfaceamento de 4 bits, somente D7 a D4 são usados
+
+Alem disso, geralmente há uma entrada para contraste e outras para um LED usado para iluminação traseira.
+
+O HD44780 pode operar com interface de 4 ou 8 bits.
+Para inicializá-lo, segue-se o fluxograma da Fig 23 (pag 45) do datasheet.
+
+Escreva uma função chamada void inicializaLCD(void) que inicializa o HD44780 conforme o algoritmo.
+
+Cada operação do HD77480 leva um tempo para ser executada. No pior caso (clear display), leva quase 2ms. Uma escrita de dados leva cerca de 40 us.
+
+Para enviar instrução ou dado para o HD77480, deve-se seguir uma temporização descrita na fig. 25. Basicamente:
+Configura RS (0 para instrução, 1 para dados)
+Configura o R/W (0 para escrita, 1 para leitura)
+Configuram-se os bits de dados (comando ou dados) em D7 a D0
+Aplica-se um pulso no Enable (0 para 1 e depois para 0)
+
+É imprescindivel obedecer aos limites de temporização (pag 52 do datasheet). Principalmente: largura minima do pulso no enable: 230 ns; tempo total do ciclo do Enable: minimo de 500 ns.
+
+Escreva uma função chamada void enviaLCD(uint8_t comandoDado, uint8_t dado) que faça o seguinte: 
+Configura RS de acordo com comandoDado
+Configura R/W para 0
+Configura os bits de dados
+Aplica um pulso no Enable, obedecendo á temporização (pensem em quanto tempo demora cada instrução; isso depende do cristal usado e do fusivel CLKDIV8)
+Lê o busy flag em loop até virar 0
